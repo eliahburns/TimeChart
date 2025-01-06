@@ -84,8 +84,25 @@ export interface TimeChartOptionsBase extends Partial<TimeChartRenderOptions> {
     zoom?: ZoomOptions;
 }
 
+export interface HeatmapOptions {
+    cellWidth: number;
+    cellHeight: number;
+    colorHot: string;
+    colorCold: string;
+}
+
+export interface TimeRangeOptions {
+    timeScale: number;
+    timeRange: {
+        min: number;
+        max: number;
+    };
+}
+
 export interface ResolvedCoreOptions extends TimeChartRenderOptions {
     series: TimeChartSeriesOptions[];
+    heatmap?: Partial<HeatmapOptions>;
+    time?: Partial<TimeRangeOptions>;
 }
 
 export interface ResolvedOptions extends ResolvedCoreOptions {

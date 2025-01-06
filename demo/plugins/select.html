@@ -15,7 +15,7 @@
         <input type="checkbox" id="x" name="x" checked>
 
         <label for="y">Y</label>
-        <input type="checkbox" id="y" name="y">
+        <input type="checkbox" id="y" name="y" checked>
     </form>
 
     <script src="https://cdn.jsdelivr.net/npm/d3-array@3"></script>
@@ -43,6 +43,7 @@
                 d3Axis: TimeChart.plugins.d3Axis,
                 zoom: new TimeChart.plugins.TimeChartZoomPlugin({
                     x: { autoRange: true },
+                    y: { autoRange: true },
                     panMouseButtons: 4,
                     touchMinPoints: 2,
                 }),

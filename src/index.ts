@@ -7,6 +7,7 @@ import { legend } from './plugins/legend';
 import { lineChart } from './plugins/lineChart';
 import { nearestPoint } from './plugins/nearestPoint';
 import { TimeChartTooltipPlugin } from './plugins/tooltip';
+import { heatmapChart } from './plugins/heatmapChart';
 
 type TDefaultPlugins = {
     lineChart: typeof lineChart,
@@ -16,6 +17,7 @@ type TDefaultPlugins = {
     legend: typeof legend,
     zoom: TimeChartZoomPlugin,
     tooltip: TimeChartTooltipPlugin,
+    heatmap: typeof heatmapChart,
 }
 
 function addDefaultPlugins<TPlugins extends TimeChartPlugins=NoPlugin>(options?: TimeChartOptions<TPlugins>): TimeChartOptions<TPlugins&TDefaultPlugins> {
@@ -30,6 +32,7 @@ function addDefaultPlugins<TPlugins extends TimeChartPlugins=NoPlugin>(options?:
             legend,
             zoom: new TimeChartZoomPlugin(o.zoom),
             tooltip: new TimeChartTooltipPlugin(o.tooltip),
+            heatmap: heatmapChart,
             ...(o.plugins ?? {}) as TPlugins,
         }
     } as TimeChartOptions<TPlugins&TDefaultPlugins>;
@@ -46,6 +49,7 @@ export default class TimeChart<TPlugins extends TimeChartPlugins=NoPlugin> exten
         legend,
         TimeChartZoomPlugin,
         TimeChartTooltipPlugin,
+        heatmapChart,
     }
     static LineType = LineType;
 

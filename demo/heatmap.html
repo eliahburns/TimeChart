@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TimeChart Heatmap Demo</title>
+    <style>
+        #chart {
+            width: 100%;
+            height: 640px;
+            max-height: 90vh;
+        }
+    </style>
+</head>
+<body>
+    <h1>TimeChart Heatmap Demo</h1>
+    <div id="chart"></div>
+    
+    <div class="padding-control">
+        <div>
+            <label>Padding:</label>
+            <span id="padding-top" title="top"></span>
+            <span id="padding-right" title="right"></span>
+            <span id="padding-bottom" title="bottom"></span>
+            <span id="padding-left" title="left"></span>
+        </div>
+        <div>
+            <label>Render Padding:</label>
+            <input type="number" id="render-padding-top" placeholder="top" title="top">
+            <input type="number" id="render-padding-right" placeholder="right" title="right">
+            <input type="number" id="render-padding-bottom" placeholder="bottom" title="bottom">
+            <input type="number" id="render-padding-left" placeholder="left" title="left">
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/d3-array@3"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3-color@3"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3-format@3"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3-interpolate@3"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3-time@3"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3-time-format@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3-scale@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3-selection@3"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3-axis@3"></script>
+
+    <!-- <script src="../dist/timechart.umd.js"></script> -->
+    <script src="../dist/timechart.min.js"></script>
+    <script src="./heatmap.js"></script>
+</body>
+</html>

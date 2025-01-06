@@ -4,3 +4,5 @@ import { TimeChartPlugins } from '../options';
 export interface TimeChartPlugin<TState=any> {
     apply(chart: core<TimeChartPlugins>): TState;
 }
+
+export { heatmapChart } from './heatmapChart';

@@ -12,28 +12,62 @@ const BUFFER_TEXTURE_HEIGHT = 2048;
 const BUFFER_POINT_CAPACITY = BUFFER_TEXTURE_WIDTH * BUFFER_TEXTURE_HEIGHT;
 const BUFFER_INTERVAL_CAPACITY = BUFFER_POINT_CAPACITY - 2;
 
+/**
+ * Manages uniform buffer objects (UBOs) for efficient data transfer to WebGL shaders.
+ * Handles transformation matrices and scaling factors for rendering.
+ */
 class ShaderUniformData {
-    data;
-    ubo;
+    // Raw binary buffer to store uniform data
+    data: ArrayBuffer;
+    // WebGL uniform buffer object reference
+    ubo: WebGLBuffer;
 
+    /**
+     * Creates a new uniform buffer with specified size
+     * @param gl WebGL context
+     * @param size Size of the uniform buffer in bytes
+     */
     constructor(private gl: WebGL2RenderingContext, size: number) {
+        // Create ArrayBuffer to store data on CPU side
         this.data = new ArrayBuffer(size);
+        // Create and initialize WebGL buffer
         this.ubo = throwIfFalsy(gl.createBuffer());
         gl.bindBuffer(gl.UNIFORM_BUFFER, this.ubo);
         gl.bufferData(gl.UNIFORM_BUFFER, this.data, gl.DYNAMIC_DRAW);
     }
+
+    /**
+     * Access the model scaling factors (x, y)
+     * Located at offset 0 in buffer
+     */
     get modelScale() {
         return new Float32Array(this.data, 0, 2);
     }
+
+    /**
+     * Access the model translation values (x, y)
+     * Located at offset 8 bytes (2 floats * 4 bytes)
+     */
     get modelTranslate() {
         return new Float32Array(this.data, 2 * 4, 2);
     }
+
+    /**
+     * Access the projection scaling factors (x, y)
+     * Located at offset 16 bytes (4 floats * 4 bytes)
+     */
     get projectionScale() {
         return new Float32Array(this.data, 4 * 4, 2);
     }
 
+    /**
+     * Upload the buffer data to GPU
+     * @param index Binding point index for the uniform buffer
+     */
     upload(index = 0) {
+        // Bind buffer to specified index
         this.gl.bindBufferBase(this.gl.UNIFORM_BUFFER, index, this.ubo);
+        // Upload current data to GPU
         this.gl.bufferSubData(this.gl.UNIFORM_BUFFER, 0, this.data);
     }
 }
@@ -146,65 +180,121 @@ void main() {
     }
 }
 
+/**
+ * Manages a fixed-size segment of data points in a WebGL texture buffer.
+ * Each segment can store BUFFER_TEXTURE_WIDTH * BUFFER_TEXTURE_HEIGHT points.
+ * Points are stored as (x,y) pairs in a 2D texture for efficient GPU access.
+ */
 class SeriesSegmentVertexArray {
-    dataBuffer;
+    // WebGL texture buffer to store data points
+    dataBuffer: WebGLTexture;
 
+    /**
+     * Creates a new segment buffer for storing data points
+     * @param gl WebGL context
+     * @param dataPoints Source data buffer containing all points
+     */
     constructor(
         private gl: WebGL2RenderingContext,
         private dataPoints: DataPointsBuffer,
     ) {
+        // Create and initialize texture buffer
         this.dataBuffer = throwIfFalsy(gl.createTexture());
         gl.bindTexture(gl.TEXTURE_2D, this.dataBuffer);
-        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RG32F, BUFFER_TEXTURE_WIDTH, BUFFER_TEXTURE_HEIGHT);
-        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, BUFFER_TEXTURE_WIDTH, BUFFER_TEXTURE_HEIGHT, gl.RG, gl.FLOAT, new Float32Array(BUFFER_TEXTURE_WIDTH * BUFFER_TEXTURE_HEIGHT * 2));
+        
+        // Allocate immutable texture storage (RG32F format for x,y float pairs)
+        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RG32F, 
+            BUFFER_TEXTURE_WIDTH, BUFFER_TEXTURE_HEIGHT);
+        
+        // Initialize texture with empty data
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 
+            BUFFER_TEXTURE_WIDTH, BUFFER_TEXTURE_HEIGHT, 
+            gl.RG, gl.FLOAT, 
+            new Float32Array(BUFFER_TEXTURE_WIDTH * BUFFER_TEXTURE_HEIGHT * 2));
+        
+        // Set texture parameters for point sampling
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     }
 
+    /**
+     * Clean up WebGL resources
+     */
     delete() {
         this.gl.deleteTexture(this.dataBuffer);
     }
 
+    /**
+     * Updates the texture buffer with new data points
+     * @param start Starting index in source data
+     * @param n Number of points to sync
+     * @param bufferPos Position in the texture buffer to start writing
+     */
     syncPoints(start: number, n: number, bufferPos: number) {
-        const dps = this.dataPoints;
+        const dataPoints = this.dataPoints;
+        
+        // Calculate texture rows that need updating
         let rowStart = Math.floor(bufferPos / BUFFER_TEXTURE_WIDTH);
         let rowEnd = Math.ceil((bufferPos + n) / BUFFER_TEXTURE_WIDTH);
-        // Ensure we have some padding at both ends of data.
-        if (rowStart > 0 && start === 0 && bufferPos === rowStart * BUFFER_TEXTURE_WIDTH)
+        
+        // Add padding rows if we're at the start or end of data
+        // This ensures smooth rendering at segment boundaries
+        if (rowStart > 0 && start === 0 && 
+            bufferPos === rowStart * BUFFER_TEXTURE_WIDTH)
             rowStart--;
-        if (rowEnd < BUFFER_TEXTURE_HEIGHT && start + n === dps.length && bufferPos + n === rowEnd * BUFFER_TEXTURE_WIDTH)
+        if (rowEnd < BUFFER_TEXTURE_HEIGHT && 
+            start + n === dataPoints.length && 
+            bufferPos + n === rowEnd * BUFFER_TEXTURE_WIDTH)
             rowEnd++;
 
+        // Create temporary buffer for the update region
         const buffer = new Float32Array((rowEnd - rowStart) * BUFFER_TEXTURE_WIDTH * 2);
+        
+        // Fill buffer with data points
         for (let r = rowStart; r < rowEnd; r++) {
             for (let c = 0; c < BUFFER_TEXTURE_WIDTH; c++) {
                 const p = r * BUFFER_TEXTURE_WIDTH + c;
-                const i = Math.max(Math.min(start + p - bufferPos, dps.length - 1), 0);
-                const dp = dps[i];
+                // Clamp source index to valid range
+                const i = Math.max(Math.min(start + p - bufferPos, dataPoints.length - 1), 0);
+                const dp = dataPoints[i];
+                // Each point takes 2 slots (x,y) in the buffer
                 const bufferIdx = ((r - rowStart) * BUFFER_TEXTURE_WIDTH + c) * 2;
                 buffer[bufferIdx] = dp.x;
                 buffer[bufferIdx + 1] = dp.y;
             }
         }
+        
+        // Update texture with new data
         const gl = this.gl;
         gl.bindTexture(gl.TEXTURE_2D, this.dataBuffer);
-        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, rowStart, BUFFER_TEXTURE_WIDTH, rowEnd - rowStart, gl.RG, gl.FLOAT, buffer);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, rowStart, 
+            BUFFER_TEXTURE_WIDTH, rowEnd - rowStart, 
+            gl.RG, gl.FLOAT, buffer);
     }
 
     /**
-     * @param renderInterval [start, end) interval of data points, start from 0
+     * Renders the visible portion of this segment
+     * @param renderInterval Range of points to render [start, end)
+     * @param type Line rendering style (Line, Step, NativeLine, NativePoint)
      */
     draw(renderInterval: { start: number, end: number }, type: LineType) {
+        // Clamp render range to buffer capacity
         const first = Math.max(0, renderInterval.start);
-        const last = Math.min(BUFFER_INTERVAL_CAPACITY, renderInterval.end)
-        const count = last - first
+        const last = Math.min(BUFFER_INTERVAL_CAPACITY, renderInterval.end);
+        const count = last - first;
 
+        // Bind texture for rendering
         const gl = this.gl;
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, this.dataBuffer);
+
+        // Draw based on line type
         if (type === LineType.Line) {
-            gl.drawArrays(gl.TRIANGLE_STRIP, first * 4, count * 4 + (last !== renderInterval.end ? 2 : 0));
+            // Each point generates 4 vertices for triangle strip
+            gl.drawArrays(gl.TRIANGLE_STRIP, first * 4, 
+                count * 4 + (last !== renderInterval.end ? 2 : 0));
         } else if (type === LineType.Step) {
+            // Step lines need extra vertices for vertical segments
             let firstP = first * 4;
             let countP = count * 4 + 2;
             if (first === renderInterval.start) {
@@ -213,8 +303,10 @@ class SeriesSegmentVertexArray {
             }
             gl.drawArrays(gl.TRIANGLE_STRIP, firstP, countP);
         } else if (type === LineType.NativeLine) {
+            // Simple line strip using native GL lines
             gl.drawArrays(gl.LINE_STRIP, first, count + 1);
         } else if (type === LineType.NativePoint) {
+            // Individual points
             gl.drawArrays(gl.POINTS, first, count + 1);
         }
     }
@@ -356,19 +448,27 @@ class SeriesVertexArray {
         this.pushBack();
     }
 
+    // Implements view culling (only draws visible points).
     draw(renderDomain: { min: number, max: number }) {
         const data = this.series.data;
+        // 1. First level of culling - entire series check
         if (this.segments.length === 0 || data[0].x > renderDomain.max || data[data.length - 1].x < renderDomain.min)
             return;
-
+        // 2. Find visible data points using binary search
         const key = (d: DataPoint) => d.x
+        // Find first visible point (subtract 1 to include point just before view)
         const firstDP = domainSearch(data, 1, data.length, renderDomain.min, key) - 1;
+        // Find last visible point 
         const lastDP = domainSearch(data, firstDP, data.length - 1, renderDomain.max, key)
+        // 3. Calculate buffer positions 
         const startInterval = firstDP + this.validStart;
         const endInterval = lastDP + this.validStart;
+
+        // 4. Determine which segments contain visible points
         const startArray = Math.floor(startInterval / BUFFER_INTERVAL_CAPACITY);
         const endArray = Math.ceil(endInterval / BUFFER_INTERVAL_CAPACITY);
 
+        // 5. Draw only the segments that contain visible points
         for (let i = startArray; i < endArray; i++) {
             const arrOffset = i * BUFFER_INTERVAL_CAPACITY
             this.segments[i].draw({
@@ -427,20 +527,26 @@ export class LineChartRenderer {
     }
 
     drawFrame() {
+        // Sync buffer and domain.
         this.syncBuffer();
         this.syncDomain();
+        // Upload uniform buffer.
         this.uniformBuffer.upload();
         const gl = this.gl;
+        // Draw each series.
         for (const [ds, arr] of this.arrays) {
+            // Skip invisible series.
             if (!ds.visible) {
                 continue;
             }
 
+            // Select program based on line type.
             const prog = ds.lineType === LineType.NativeLine || ds.lineType === LineType.NativePoint ? this.nativeLineProgram : this.lineProgram;
             prog.use();
+            // Set color.
             const color = resolveColorRGBA(ds.color ?? this.options.color);
             gl.uniform4fv(prog.locations.uColor, color);
-
+            // Set line width.
             const lineWidth = ds.lineWidth ?? this.options.lineWidth;
             if (prog instanceof LineProgram) {
                 gl.uniform1i(prog.locations.uLineType, ds.lineType);
@@ -454,12 +560,15 @@ export class LineChartRenderer {
                     gl.uniform1f(prog.locations.uPointSize, lineWidth * this.options.pixelRatio);
             }
 
+            // Calculate render domain with padding for line width.
             const renderDomain = {
                 min: this.model.xScale.invert(this.options.renderPaddingLeft - lineWidth / 2),
                 max: this.model.xScale.invert(this.width - this.options.renderPaddingRight + lineWidth / 2),
             };
+            // Draw visible points.
             arr.draw(renderDomain);
         }
+        // Check for WebGL errors.
         if (this.options.debugWebGL) {
             const err = gl.getError();
             if (err != gl.NO_ERROR) {
